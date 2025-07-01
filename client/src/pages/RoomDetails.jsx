@@ -76,7 +76,7 @@ const RoomDetails = () => {
 
             {/* Room Details */}
             <div className='flex flex-col md:flex-row items-start md:items-center gap-2'>
-                <h1 className='text-3xl md:text-4xl font-playfair'>{room.hotel.name} <span className='font-inter text-sm'>({room.roomType})</span></h1>
+                <h1 className='text-3xl md:text-4xl font-playfair'>{room.hotel?.name || 'Hotel Name'} <span className='font-inter text-sm'>({room.roomType})</span></h1>
                 <p className='text-xs font-inter py-1.5 px-3 text-white bg-orange-500 rounded-full'>20% OFF</p>
             </div>
             <div className='flex items-center gap-1 mt-2'>
@@ -85,7 +85,7 @@ const RoomDetails = () => {
             </div>
             <div className='flex items-center gap-1 text-gray-500 mt-2'>
                 <img src={assets.locationIcon} alt='location-icon' />
-                <span>{room.hotel.address}</span>
+                <span>{room.hotel?.address || 'Address not available'}</span>
             </div>
 
             {/* Room Images */}
@@ -96,7 +96,7 @@ const RoomDetails = () => {
                 </div>
 
                 <div className='grid grid-cols-2 gap-4 lg:w-1/2 w-full'>
-                    {room?.images.length > 1 && room.images.map((image, index) => (
+                    {room?.images?.length > 1 && room.images.map((image, index) => (
                         <img key={index} onClick={() => setMainImage(image)}
                             className={`w-full rounded-xl shadow-md object-cover cursor-pointer ${mainImage === image && 'outline-3 outline-orange-500'}`} src={image} alt='Room Image' />
                     ))}
@@ -108,7 +108,7 @@ const RoomDetails = () => {
                 <div className='flex flex-col'>
                     <h1 className='text-3xl md:text-4xl font-playfair'>Experience Luxury Like Never Before</h1>
                     <div className='flex flex-wrap items-center mt-3 mb-6 gap-4'>
-                        {room.amenities.map((item, index) => (
+                        {room.amenities?.map((item, index) => (
                             <div key={index} className='flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100'>
                                 <img src={facilityIcons[item]} alt={item} className='w-5 h-5' />
                                 <p className='text-xs'>{item}</p>
@@ -160,9 +160,12 @@ const RoomDetails = () => {
 
             <div className='flex flex-col items-start gap-4'>
                 <div className='flex gap-4'>
-                    <img className='h-14 w-14 md:h-18 md:w-18 rounded-full' src={room.hotel.owner.image} alt='Host' />
+                    {/* Fixed the null reference error here */}
+                    <img className='h-14 w-14 md:h-18 md:w-18 rounded-full' 
+                         src={room.hotel?.owner?.image || assets.defaultAvatar || '/default-avatar.png'} 
+                         alt='Host' />
                     <div>
-                        <p className='text-lg md:text-xl'>Hosted by {room.hotel.name}</p>
+                        <p className='text-lg md:text-xl'>Hosted by {room.hotel?.name || 'Hotel Owner'}</p>
                         <div className='flex items-center mt-1'>
                             <StarRating />
                             <p className='ml-2'>200+ reviews</p>

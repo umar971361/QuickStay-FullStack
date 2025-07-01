@@ -2,6 +2,7 @@ import transporter from "../configs/nodemailer.js";
 import Booking from "../models/Booking.js";
 import Hotel from "../models/Hotel.js";
 import Room from "../models/Room.js";
+import User from "../models/User.js";
 import stripe from "stripe";
 
 // Function to Check Availablity of Room
@@ -41,7 +42,12 @@ export const createBooking = async (req, res) => {
 
     const { room, checkInDate, checkOutDate, guests } = req.body;
 
-    const user = req.user._id;
+    // Fixed: Get user ID from the correct auth object
+    const userId = req.auth?.sessionClaims?.sub || req.user?._id;
+    
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "User not authenticated" });
+    }
 
     // Before Booking Check Availability
     const isAvailable = await checkAvailability({
@@ -56,6 +62,11 @@ export const createBooking = async (req, res) => {
 
     // Get totalPrice from Room
     const roomData = await Room.findById(room).populate("hotel");
+    
+    if (!roomData) {
+      return res.json({ success: false, message: "Room not found" });
+    }
+    
     let totalPrice = roomData.pricePerNight;
 
     // Calculate totalPrice based on nights
@@ -67,7 +78,7 @@ export const createBooking = async (req, res) => {
     totalPrice *= nights;
 
     const booking = await Booking.create({
-      user,
+      user: userId,
       room,
       hotel: roomData.hotel._id,
       guests: +guests,
@@ -76,33 +87,45 @@ export const createBooking = async (req, res) => {
       totalPrice,
     });
 
-    const mailOptions = {
-      from: process.env.SENDER_EMAIL,
-      to: req.user.email,
-      subject: 'Hotel Booking Details',
-      html: `
-        <h2>Your Booking Details</h2>
-        <p>Dear ${req.user.username},</p>
-        <p>Thank you for your booking! Here are your details:</p>
-        <ul>
-          <li><strong>Booking ID:</strong> ${booking.id}</li>
-          <li><strong>Hotel Name:</strong> ${roomData.hotel.name}</li>
-          <li><strong>Location:</strong> ${roomData.hotel.address}</li>
-          <li><strong>Date:</strong> ${booking.checkInDate.toDateString()}</li>
-          <li><strong>Booking Amount:</strong>  ${process.env.CURRENCY || '$'} ${booking.totalPrice} /night</li>
-        </ul>
-        <p>We look forward to welcoming you!</p>
-        <p>If you need to make any changes, feel free to contact us.</p>
-      `,
-    };
+    // Get user details for email
+    const user = await User.findById(userId);
 
-    await transporter.sendMail(mailOptions);
+    if (user && user.email) {
+      const mailOptions = {
+        from: process.env.SENDER_EMAIL,
+        to: user.email,
+        subject: 'Hotel Booking Details',
+        html: `
+          <h2>Your Booking Details</h2>
+          <p>Dear ${user.name || user.username || 'Guest'},</p>
+          <p>Thank you for your booking! Here are your details:</p>
+          <ul>
+            <li><strong>Booking ID:</strong> ${booking.id}</li>
+            <li><strong>Hotel Name:</strong> ${roomData.hotel.name}</li>
+            <li><strong>Location:</strong> ${roomData.hotel.address}</li>
+            <li><strong>Check-in Date:</strong> ${new Date(booking.checkInDate).toDateString()}</li>
+            <li><strong>Check-out Date:</strong> ${new Date(booking.checkOutDate).toDateString()}</li>
+            <li><strong>Total Amount:</strong> ${process.env.CURRENCY || '$'}${booking.totalPrice}</li>
+            <li><strong>Nights:</strong> ${nights}</li>
+            <li><strong>Guests:</strong> ${guests}</li>
+          </ul>
+          <p>We look forward to welcoming you!</p>
+          <p>If you need to make any changes, feel free to contact us.</p>
+        `,
+      };
+
+      try {
+        await transporter.sendMail(mailOptions);
+      } catch (emailError) {
+        console.log("Email sending failed:", emailError);
+        // Don't fail the booking if email fails
+      }
+    }
 
     res.json({ success: true, message: "Booking created successfully" });
 
   } catch (error) {
-    console.log(error);
-    
+    console.log("Booking creation error:", error);
     res.json({ success: false, message: "Failed to create booking" });
   }
 };
@@ -111,18 +134,29 @@ export const createBooking = async (req, res) => {
 // GET /api/bookings/user
 export const getUserBookings = async (req, res) => {
   try {
-    const user = req.user._id;
-    const bookings = await Booking.find({ user }).populate("room hotel").sort({ createdAt: -1 });
+    // Fixed: Get user ID from the correct auth object
+    const userId = req.auth?.sessionClaims?.sub || req.user?._id;
+    
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "User not authenticated" });
+    }
+    
+    const bookings = await Booking.find({ user: userId }).populate("room hotel").sort({ createdAt: -1 });
     res.json({ success: true, bookings });
   } catch (error) {
     res.json({ success: false, message: "Failed to fetch bookings" });
   }
 };
 
-
 export const getHotelBookings = async (req, res) => {
   try {
-    const hotel = await Hotel.findOne({ owner: req.auth.userId });
+    const ownerId = req.auth?.sessionClaims?.sub || req.auth?.userId;
+    
+    if (!ownerId) {
+      return res.status(401).json({ success: false, message: "User not authenticated" });
+    }
+    
+    const hotel = await Hotel.findOne({ owner: ownerId });
     if (!hotel) {
       return res.json({ success: false, message: "No Hotel found" });
     }
@@ -137,7 +171,6 @@ export const getHotelBookings = async (req, res) => {
     res.json({ success: false, message: "Failed to fetch bookings" });
   }
 };
-
 
 export const stripePayment = async (req, res) => {
   try {
